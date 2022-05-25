@@ -1,72 +1,20 @@
-![](./resources/official_armmbed_example_badge.png)
-# Blinky Mbed OS example
+# Mbed OS 6 Interactive 4 Pin Fan PWM Generation
 
-The example project is part of the [Arm Mbed OS Official Examples](https://os.mbed.com/code/) and is the [getting started example for Mbed OS](https://os.mbed.com/docs/mbed-os/latest/quick-start/index.html). It contains an application that repeatedly blinks an LED on supported [Mbed boards](https://os.mbed.com/platforms/).
+### Equipment used
+- 4 pin PWM Fan (Arctic F8 PWM)
+- 12v power supply for fan (current is not particularly high, so batteries in series should be fine also)
+- Nucleo F303RE
+- ~5k ish resistor to pull up fan tachometer pin to 12v
+- 2 resistors to form a voltage divider for the MCU pin that reads the fan tachometer (I used 68k and 20k for a approx 1/4 division). Without these, the tachometer signal is well over 5v with a noise-induced Vp-p of almost 20v. After, around 2.7v with Vp-p under 5v.
 
-You can build the project with all supported [Mbed OS build tools](https://os.mbed.com/docs/mbed-os/latest/tools/index.html). However, this example project specifically refers to the command-line interface tool [Arm Mbed CLI](https://github.com/ARMmbed/mbed-cli#installing-mbed-cli).
-(Note: To see a rendered example you can import into the Arm Online Compiler, please see our [import quick start](https://os.mbed.com/docs/mbed-os/latest/quick-start/online-with-the-online-compiler.html#importing-the-code).)
+### Instructions
+- Check the code and change the PwmOut / InterruptIn pins to something that will work for your board
+- Build the circuit, remember tach on the fan needs pullup to 12v and then a voltage divider before being read by the MCU
+- Connect to the device at 115200 in eg. MobaXterm or Putty and enable "implicit LF in every CR"
+- Commands are "duty", "freq", and "output". Enter just the command to see the current value, or with a value after to set the value. Duty and freq take floats in 0 - 1.0, output takes time in ms.
+  - Frequency defaults to 25khz and doesn't need to be changed unless you want to see what happens with different values
+  - Output sets the interval the current RPM is printed at
 
-## Mbed OS build tools
-
-### Mbed CLI 2
-Starting with version 6.5, Mbed OS uses Mbed CLI 2. It uses Ninja as a build system, and CMake to generate the build environment and manage the build process in a compiler-independent manner. If you are working with Mbed OS version prior to 6.5 then check the section [Mbed CLI 1](#mbed-cli-1).
-1. [Install Mbed CLI 2](https://os.mbed.com/docs/mbed-os/latest/build-tools/install-or-upgrade.html).
-1. From the command-line, import the example: `mbed-tools import mbed-os-example-blinky`
-1. Change the current directory to where the project was imported.
-
-### Mbed CLI 1
-1. [Install Mbed CLI 1](https://os.mbed.com/docs/mbed-os/latest/quick-start/offline-with-mbed-cli.html).
-1. From the command-line, import the example: `mbed import mbed-os-example-blinky`
-1. Change the current directory to where the project was imported.
-
-## Application functionality
-
-The `main()` function is the single thread in the application. It toggles the state of a digital output connected to an LED on the board.
-
-**Note**: This example requires a target with RTOS support, i.e. one with `rtos` declared in `supported_application_profiles` in `targets/targets.json` in [mbed-os](https://github.com/ARMmbed/mbed-os). For non-RTOS targets (usually with small memory sizes), please use [mbed-os-example-blinky-baremetal](https://github.com/ARMmbed/mbed-os-example-blinky-baremetal) instead.
-
-## Building and running
-
-1. Connect a USB cable between the USB port on the board and the host computer.
-1. Run the following command to build the example project and program the microcontroller flash memory:
-
-    * Mbed CLI 2
-
-    ```bash
-    $ mbed-tools compile -m <TARGET> -t <TOOLCHAIN> --flash
-    ```
-
-    * Mbed CLI 1
-
-    ```bash
-    $ mbed compile -m <TARGET> -t <TOOLCHAIN> --flash
-    ```
-
-Your PC may take a few minutes to compile your code.
-
-The binary is located at:
-* **Mbed CLI 2** - `./cmake_build/mbed-os-example-blinky.bin`</br>
-* **Mbed CLI 1** - `./BUILD/<TARGET>/<TOOLCHAIN>/mbed-os-example-blinky.bin`
-
-Alternatively, you can manually copy the binary to the board, which you mount on the host computer over USB.
-
-## Expected output
-The LED on your target turns on and off every 500 milliseconds.
-
-
-## Troubleshooting
-If you have problems, you can review the [documentation](https://os.mbed.com/docs/latest/tutorials/debugging.html) for suggestions on what could be wrong and how to fix it.
-
-## Related Links
-
-* [Mbed OS Stats API](https://os.mbed.com/docs/latest/apis/mbed-statistics.html).
-* [Mbed OS Configuration](https://os.mbed.com/docs/latest/reference/configuration.html).
-* [Mbed OS Serial Communication](https://os.mbed.com/docs/latest/tutorials/serial-communication.html).
-* [Mbed OS bare metal](https://os.mbed.com/docs/mbed-os/latest/reference/mbed-os-bare-metal.html).
-* [Mbed boards](https://os.mbed.com/platforms/).
-
-### License and contributions
-
-The software is provided under Apache-2.0 license. Contributions to this project are accepted under the same license. Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for more info.
-
-This project contains code from other projects. The original license text is included in those source files. They must comply with our license guide.
+### Interference on tachometer pin
+I had issues with interference on the tachometer pin. One source was from originally being next to the PWM pin, which of course introduced a bit of 25khz noise. However another source seemed to be from my oscilloscope probe being connected to the same node introducing ~1.1khz noise.
+There is a lot of discussion on the internet about this involving various solutions with some combination of capacitors, low pass RC filters, diodes, schmitt triggers, or using a lower noise 12v supply. Using a distant pin and disconnecting sources of interference has been enough for me for now, but better filtering may be needed in some cases.

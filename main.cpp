@@ -4,30 +4,35 @@
  */
 
 #include "mbed.h"
-#include <ratio>
+
+#define PWM_PIN PB_3
+#define TACH_PIN PA_0
 
 
 Thread input_thread;
 Thread pwm_thread;
-Thread tach_thread;
-Thread outpout_thread;
+//Thread tach_thread;
+Ticker tach_ticker;
+Thread output_thread;
 BufferedSerial bf(USBTX, USBRX, 115200);
 //FILE* bf_pc_out;
-PwmOut fan_pwm(PB_3); //Arduino D3 pin
-//todo interrupt for tach
+PwmOut fan_pwm(PWM_PIN); //Arduino D3 pin
+InterruptIn tach_in(TACH_PIN); //Arduino D5 pin
 
 //TODO replace global variables with RTOS primitive between threads (probably queues of length 1)
 //Config struct written by input thread and read by pwm / tach / output threads
 struct {
     float pwm_duty = 0.5;
     float pwm_frequency = 25000;
+    chrono::milliseconds tach_update_ms = 1000ms;
     chrono::milliseconds output_update_ms = chrono::milliseconds(2000);
 } config;
 
 //TODO avoid global tach variable by having a Tachometer class whose instantiated object carry the state, will need to do the proper callback to the member function
 //Then tach thread can calculate RPM From frequency and send to output thread
 //incremented by tachometer ISR
-int tach_count = 0;
+volatile int tach_count = 0;
+int tach_rpm = -1;
 
 void bf_print(BufferedSerial* bf, char s[])
 {
@@ -92,13 +97,37 @@ void pwm_loop()
 //Handle interrupt from tachometer
 void tach_isr()
 {
-
+    tach_count++;
 }
 
 //check the tach variable at the update frequency, calculate the RPM and set var, reset tach variable
-void tach_loop()
+// void tach_loop()
+// {
+//     bf_printf(&bf, "Starting tach loop\n");
+//     while(true)
+//     {
+//         //times 60 seconds per minute, divided by 2 pulses per rotation
+//         tach_rpm  = tach_count * 60 / 2;
+//         bf_printf(&bf, "Tach count: %d\n", tach_count);
+
+//         //TODO use a proper RTOS way of controlling access to ISR volatile count variable
+//         tach_count = 0; //ok since write to an integer is atomic, but still not great
+
+//         //TODO tach loop should trigger at a fixed frequency (Ticker?)
+//         //sleep slightly faster than update frequency to guarantee most recent value
+//         ThisThread::sleep_for(config.output_update_ms * 9 / 10);
+//     }
+// }
+
+//Timer functions should be totally nonblocking
+//Avoid memory alloc or printf
+void tach_rpm_tick()
 {
-    bf_printf(&bf, "Starting tach loop\n");
+    //times 60 seconds per minute, divided by 2 pulses per rotation
+    tach_rpm  = tach_count * 60 / 2;
+
+    //TODO use a proper RTOS way of controlling access to ISR volatile count variable
+    tach_count = 0; //ok since write to an integer is atomic, but still not great
 }
 
 void input_line_handler(char* il)
@@ -250,10 +279,10 @@ void input_loop()
 void output_loop()
 {
     bf_printf(&bf, "Starting output loop\n");
-    int tach_reading = -1;
     while(true)
     {
-        bf_printf(&bf, "Tach reading (RPM): %d\n", tach_reading);
+        //TODO Proper RTOS way of getting the current tach RPM from the tach loop
+        bf_printf(&bf, "Tach reading (RPM): %d\n", tach_rpm);
         ThisThread::sleep_for(config.output_update_ms);
     }
 
@@ -265,6 +294,8 @@ int main()
     DigitalOut led(LED1);
     led = 1;
 
+    tach_in.rise(&tach_isr);
+
     bf.set_blocking(true);
 
     //bf_pc_out = fdopen(&bf, "w");
@@ -273,11 +304,13 @@ int main()
 
     input_thread.start(input_loop);
     pwm_thread.start(pwm_loop);
-    tach_thread.start(tach_loop);
-    outpout_thread.start(output_loop);
+    //tach_thread.start(tach_loop);
+    tach_in.mode(PullDown);
+    tach_ticker.attach(&tach_rpm_tick, config.tach_update_ms);
+    output_thread.start(output_loop);
 
     while (true) {
-        ThisThread::sleep_for(1s);
+        ThisThread::sleep_for(10s);
     }
 }
 
