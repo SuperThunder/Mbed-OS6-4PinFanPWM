@@ -4,6 +4,7 @@
  */
 
 #include "mbed.h"
+#include "tach.h"
 
 #define PWM_PIN PB_3
 #define TACH_PIN PA_0
@@ -11,28 +12,27 @@
 
 Thread input_thread;
 Thread pwm_thread;
-//Thread tach_thread;
-Ticker tach_ticker;
+//Ticker tach_ticker;
+Tach fan_tach(TACH_PIN);
 Thread output_thread;
 BufferedSerial bf(USBTX, USBRX, 115200);
-//FILE* bf_pc_out;
 PwmOut fan_pwm(PWM_PIN); //Arduino D3 pin
-InterruptIn tach_in(TACH_PIN); //Arduino D5 pin
+//InterruptIn tach_in(TACH_PIN); //Arduino D5 pin
 
 //TODO replace global variables with RTOS primitive between threads (probably queues of length 1)
 //Config struct written by input thread and read by pwm / tach / output threads
 struct {
     float pwm_duty = 0.5;
     float pwm_frequency = 25000;
-    chrono::milliseconds tach_update_ms = 1000ms;
+    //chrono::milliseconds tach_update_ms = 1000ms;
     chrono::milliseconds output_update_ms = chrono::milliseconds(2000);
 } config;
 
 //TODO avoid global tach variable by having a Tachometer class whose instantiated object carry the state, will need to do the proper callback to the member function
 //Then tach thread can calculate RPM From frequency and send to output thread
 //incremented by tachometer ISR
-volatile int tach_count = 0;
-int tach_rpm = -1;
+//volatile int tach_count = 0;
+//int tach_rpm = -1;
 
 void bf_print(BufferedSerial* bf, char s[])
 {
@@ -47,7 +47,7 @@ void bf_println(BufferedSerial* bf, char s[])
     bf->write(&("\n"), 1);
 }
 
-//variadic function so printf can be used with buffered serial (alternatively, you can get the )
+//variadic function so printf can be used with buffered serial (alternatively, you can get the FILE* handle for the BufferedSerial with fdopen and use fprintf)
 void bf_printf(BufferedSerial* bf, const char fmt[], ...)
 {
     //sized to RX buffer size in case entire line needs to be written
@@ -80,8 +80,6 @@ void bf_printf(BufferedSerial* bf, const char fmt[], ...)
 void pwm_loop()
 {
     bf_printf(&bf, "Starting PWM loop\n");
-    //float pwm_duty= 0.5;
-    //float pwm_period = (1.0/25000.0); //25khz
     fan_pwm.period(1/config.pwm_frequency);
     //TODO only set period / duty when it actually changes
     while(true)
@@ -95,40 +93,21 @@ void pwm_loop()
 }
 
 //Handle interrupt from tachometer
-void tach_isr()
-{
-    tach_count++;
-}
-
-//check the tach variable at the update frequency, calculate the RPM and set var, reset tach variable
-// void tach_loop()
+// void tach_isr()
 // {
-//     bf_printf(&bf, "Starting tach loop\n");
-//     while(true)
-//     {
-//         //times 60 seconds per minute, divided by 2 pulses per rotation
-//         tach_rpm  = tach_count * 60 / 2;
-//         bf_printf(&bf, "Tach count: %d\n", tach_count);
-
-//         //TODO use a proper RTOS way of controlling access to ISR volatile count variable
-//         tach_count = 0; //ok since write to an integer is atomic, but still not great
-
-//         //TODO tach loop should trigger at a fixed frequency (Ticker?)
-//         //sleep slightly faster than update frequency to guarantee most recent value
-//         ThisThread::sleep_for(config.output_update_ms * 9 / 10);
-//     }
+//     tach_count++;
 // }
 
-//Timer functions should be totally nonblocking
-//Avoid memory alloc or printf
-void tach_rpm_tick()
-{
-    //times 60 seconds per minute, divided by 2 pulses per rotation
-    tach_rpm  = tach_count * 60 / 2;
+//Note: Timer functions should be totally nonblocking
+//      Avoid memory alloc or printf
+// void tach_rpm_tick()
+// {
+//     //times 60 seconds per minute, divided by 2 pulses per rotation
+//     tach_rpm  = tach_count * 60 / 2;
 
-    //TODO use a proper RTOS way of controlling access to ISR volatile count variable
-    tach_count = 0; //ok since write to an integer is atomic, but still not great
-}
+//     //TODO use a proper RTOS way of controlling access to ISR volatile count variable
+//     tach_count = 0; //ok since write to an integer is atomic, but still not great
+// }
 
 void input_line_handler(char* il)
 {
@@ -142,10 +121,6 @@ void input_line_handler(char* il)
 
     int scan_count = sscanf(il, "%s %s ", command, value1);
 
-    //TODO: buffer overflow possible, use strtok or regex instead?
-    //fprintf(bf_pc_out, "\n--lineBuffer command: %s--\n", command);
-    //fprintf(bf_pc_out, "--lineBuffer value1: %s--\n", value1);\
-    //fprintf(bf_pc_out, "--lineBuffer scan count: %d--\n", scan_count);
     bf_printf(&bf, "\n--lineBuffer command: %s--\n", command);
     bf_printf(&bf, "--lineBuffer value1: %s--\n", value1);\
     bf_printf(&bf, "--lineBuffer scan count: %d--\n", scan_count);
@@ -193,7 +168,6 @@ void input_line_handler(char* il)
     }
     else
     {
-        //fprintf(bf_pc_out, "E: Invalid input\n");
         bf_print(&bf, "E: Invalid input\n");
     }
 }
@@ -223,10 +197,6 @@ void input_loop()
                         i++;
                     }
                     bf_print(&bf, "\n");
-                    //bf.write((void*)'\n', 2); //print back the newline
-                    //fputc('\n', bf_pc_out);
-                    //fprintf(pc, "\n");
-
                     linebuf[lineind++] = '\0'; //don't include the newline in the line buffer
 
                     //Handle the input
@@ -243,8 +213,6 @@ void input_loop()
                 if(lineind != 0)
                 {
                     bf_print(&bf, "\b \b");
-                    //bf.write("\b \b", 4); //print backspace space backspace to move back a character and clear the character on the terminal
-                    //fprintf(bf_pc_out, "\b \b");
                     linebuf[lineind--] = '\0'; //set the most recent char back to \0 and move the line buffer back a character
                 }
             }
@@ -252,20 +220,10 @@ void input_loop()
             // Space (0x20) is start of printable range, ~ (0x7E) is end
             else if (serialbuf[i] >= ' ' && serialbuf[i] <= '~')
             {
-                //bf.write((char*)(serialbuf[i]), 2);
-                //char tmpc[2]{0};
-                //tmpc[0] = serialbuf[i];
-
-                //char c = serialbuf[i];
                 bf.write(&(serialbuf[i]), 1);
-
-                //bf.sync();
-
-                //fputc(serialbuf[i], bf_pc_out);
                 linebuf[lineind++] = serialbuf[i];
             }
             //all others chars, ignore for now
-            //Arrow keys, home, end, tab, DEL, etc
             else {
                 //do nothing
             }
@@ -282,7 +240,7 @@ void output_loop()
     while(true)
     {
         //TODO Proper RTOS way of getting the current tach RPM from the tach loop
-        bf_printf(&bf, "Tach reading (RPM): %d\n", tach_rpm);
+        bf_printf(&bf, "Tach reading (RPM): %d\n", fan_tach.getRPM());
         ThisThread::sleep_for(config.output_update_ms);
     }
 
@@ -294,19 +252,18 @@ int main()
     DigitalOut led(LED1);
     led = 1;
 
-    tach_in.rise(&tach_isr);
+
+    //tach_in.rise(&tach_isr);
 
     bf.set_blocking(true);
 
-    //bf_pc_out = fdopen(&bf, "w");
     bf_print(&bf, "\nStarting threads\n");
-    //fprintf(bf_pc_out,  "\nStarting threads\n");
 
     input_thread.start(input_loop);
     pwm_thread.start(pwm_loop);
     //tach_thread.start(tach_loop);
-    tach_in.mode(PullDown);
-    tach_ticker.attach(&tach_rpm_tick, config.tach_update_ms);
+    // tach_in.mode(PullDown);
+    // tach_ticker.attach(&tach_rpm_tick, config.tach_update_ms);
     output_thread.start(output_loop);
 
     while (true) {
