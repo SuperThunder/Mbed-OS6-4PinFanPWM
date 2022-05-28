@@ -5,245 +5,100 @@
 
 #include "mbed.h"
 #include "tach.h"
+#include "yamshell.h"
 
 #define PWM_PIN PB_3
 #define TACH_PIN PA_0
+#define DEFAULT_PWM_FREQUENCY 25000.0f
+#define DEFAULT_PWM_DUTY 0.5f
 
-
-Thread input_thread;
-Thread pwm_thread;
-//Ticker tach_ticker;
-Tach fan_tach(TACH_PIN);
 Thread output_thread;
-BufferedSerial bf(USBTX, USBRX, 115200);
-PwmOut fan_pwm(PWM_PIN); //Arduino D3 pin
-//InterruptIn tach_in(TACH_PIN); //Arduino D5 pin
 
-//TODO replace global variables with RTOS primitive between threads (probably queues of length 1)
-//Config struct written by input thread and read by pwm / tach / output threads
+Tach fan_tach(TACH_PIN);
+YamShell ys(USBTX, USBRX, 115200);
+PwmOut fan_pwm(PWM_PIN); //Arduino D3 pin
+
+//Global config struct so that input line handler can print back the current value
+//OK for a small program like this but a neater organization would be if there was an "PWMApp" directory with pwmapp.h / pwmapp.cpp with this struct,
+//      the output tick function and the input line handler. The main function here would set up and connects classes to each other that operate on their own with
+//      state neatly kept only in the context of functions to which it is relevant.
 struct {
-    float pwm_duty = 0.5;
-    float pwm_frequency = 25000;
-    //chrono::milliseconds tach_update_ms = 1000ms;
+    float pwm_frequency = DEFAULT_PWM_FREQUENCY;
+    float pwm_duty = DEFAULT_PWM_DUTY;
     chrono::milliseconds output_update_ms = chrono::milliseconds(2000);
 } config;
 
-//TODO avoid global tach variable by having a Tachometer class whose instantiated object carry the state, will need to do the proper callback to the member function
-//Then tach thread can calculate RPM From frequency and send to output thread
-//incremented by tachometer ISR
-//volatile int tach_count = 0;
-//int tach_rpm = -1;
-
-void bf_print(BufferedSerial* bf, char s[])
-{
-    int len = strlen(s);
-    bf->write(s, len);
-}
-
-void bf_println(BufferedSerial* bf, char s[])
-{
-    int len = strlen(s);
-    bf->write(s, len);
-    bf->write(&("\n"), 1);
-}
-
-//variadic function so printf can be used with buffered serial (alternatively, you can get the FILE* handle for the BufferedSerial with fdopen and use fprintf)
-void bf_printf(BufferedSerial* bf, const char fmt[], ...)
-{
-    //sized to RX buffer size in case entire line needs to be written
-    char buffer[MBED_CONF_DRIVERS_UART_SERIAL_RXBUF_SIZE] = {0};
-    uint32_t vsn_retval = 0;
-
-    va_list args;
-    va_start(args, fmt);
-    
-    //non negative and less than specified buffer size: entire string written to buffer
-    vsn_retval = vsnprintf(buffer,MBED_CONF_DRIVERS_UART_SERIAL_RXBUF_SIZE,fmt,args);
-    
-    va_end(args);
-    
-    if(vsn_retval > 0 && vsn_retval < MBED_CONF_DRIVERS_UART_SERIAL_RXBUF_SIZE)
-    {
-        bf->write(buffer, vsn_retval);
-    }
-    else if(vsn_retval >= MBED_CONF_DRIVERS_UART_SERIAL_RXBUF_SIZE)
-    {
-        error("E: vsnprintf return value exceeded buffer size! (%d)\r\n", vsn_retval);
-    }
-    else
-    {
-        error("E: vsnprintf negative value (%d)\r\n", vsn_retval);
-    }
-}
-
-//set PWM frequency to specified value
-void pwm_loop()
-{
-    bf_printf(&bf, "Starting PWM loop\n");
-    fan_pwm.period(1/config.pwm_frequency);
-    //TODO only set period / duty when it actually changes
-    while(true)
-    {
-        fan_pwm.period(1/config.pwm_frequency);
-        fan_pwm.write(config.pwm_duty);
-
-        ThisThread::sleep_for(250ms);
-    }
-
-}
-
-//Handle interrupt from tachometer
-// void tach_isr()
-// {
-//     tach_count++;
+//command logic to reimplement
+//     if(strcmp("duty", command) == 0)
+//     {
+//         //print duty
+//         this->printf("PWM Duty: %f\n", config.pwm_duty);
+//     }
+//     else if(strcmp("freq", command) == 0)
+//     {
+//         //print frequency
+//         this->printf("PWM Frequency: %f\n", config.pwm_frequency);
+//     }
+//     else if(strcmp("output", command) == 0)
+//     {
+//         //print output frequency
+//         this->printf("Output frequency (ms): %d\n", config.output_update_ms);
+//     }
+//     //todo unknown command bit here
 // }
-
-//Note: Timer functions should be totally nonblocking
-//      Avoid memory alloc or printf
-// void tach_rpm_tick()
+// else if(scan_count == 2)
 // {
-//     //times 60 seconds per minute, divided by 2 pulses per rotation
-//     tach_rpm  = tach_count * 60 / 2;
-
-//     //TODO use a proper RTOS way of controlling access to ISR volatile count variable
-//     tach_count = 0; //ok since write to an integer is atomic, but still not great
+//     if(strcmp("duty", command) == 0)
+//     {
+//         status = sscanf(value1, "%f", &tmp_f);
+//         //set duty
+//         config.pwm_frequency = tmp_f;
+//         fan_pwm.write(tmp_f);
+//     }
+//     else if(strcmp("freq", command) == 0)
+//     {
+//         status = sscanf(value1, "%f", &tmp_f);
+//         //set frequency
+//         config.pwm_duty = tmp_f;
+//         fan_pwm.period(1/tmp_f);
+//     }
+//     else if(strcmp("output", command) == 0)
+//     {
+//         status = sscanf(value1, "%d", &tmp_d);
+//         //set output frequency
+//         config.output_update_ms = chrono::milliseconds(tmp_d);
+//         //output_ticker.detach();
+//         //output_ticker.attach(&output_ti)
+//     }
+//     //todo unknown command bit here
 // }
-
-void input_line_handler(char* il)
-{
-    int status, addr = -1; //temporary vars used when parsing the command
-    float tmp_f = 0.0f;
-    int tmp_d = 0;
-    char command[16] = {0};
-    
-    //Value 1: PWM duty or frequency
-    char value1 [32] = {0};
-
-    int scan_count = sscanf(il, "%s %s ", command, value1);
-
-    bf_printf(&bf, "\n--lineBuffer command: %s--\n", command);
-    bf_printf(&bf, "--lineBuffer value1: %s--\n", value1);\
-    bf_printf(&bf, "--lineBuffer scan count: %d--\n", scan_count);
-
-    if(scan_count == 1)
-    {
-        if(strcmp("duty", command) == 0)
-        {
-            //print duty
-            bf_printf(&bf, "PWM Duty: %f\n", config.pwm_duty);
-        }
-        else if(strcmp("freq", command) == 0)
-        {
-            //print frequency
-            bf_printf(&bf, "PWM Frequency: %f\n", config.pwm_frequency);
-        }
-        else if(strcmp("output", command) == 0)
-        {
-            //print output frequency
-            bf_printf(&bf, "Output frequency (ms): %d\n", config.output_update_ms);
-        }
-        //todo unknown command bit here
-    }
-    else if(scan_count == 2)
-    {
-        if(strcmp("duty", command) == 0)
-        {
-            status = sscanf(value1, "%f", &tmp_f);
-            //set duty
-            config.pwm_duty = tmp_f;
-        }
-        else if(strcmp("freq", command) == 0)
-        {
-            status = sscanf(value1, "%f", &tmp_f);
-            //set frequency
-            config.pwm_frequency = tmp_f;
-        }
-        else if(strcmp("output", command) == 0)
-        {
-            status = sscanf(value1, "%d", &tmp_d);
-            //set output frequency
-            config.output_update_ms = chrono::milliseconds(tmp_d);
-        }
-        //todo unknown command bit here
-    }
-    else
-    {
-        bf_print(&bf, "E: Invalid input\n");
-    }
-}
-
-//Check for input until newline, then process it
-void input_loop()
-{
-    char serialbuf[255]{0};
-    char linebuf[256]{0};
-    int lineind = 0;
-    int serialcount = 0;
-    bf.write("Input thread\n\n", 13);
-    while(true)
-    {
-        serialcount = bf.read(serialbuf, sizeof(serialbuf));
-        //go through all the chars we just received
-        // echo them back as appropriate
-        // and also fill up a line buffer that we will send to a handler function when we hit a newline
-        for(int i = 0; i < serialcount; i++)
-        {
-            //handle newline behaviour -> print back newline, call lineBuffer handler function
-            if(serialbuf[i] == '\r' || serialbuf[i] == '\n')
-            {
-                    //handle CR LF or LF CR cases by skipping the second char of the sequence
-                    if( serialbuf[i+1] == '\n' || serialbuf[i+1] == '\r')
-                    {
-                        i++;
-                    }
-                    bf_print(&bf, "\n");
-                    linebuf[lineind++] = '\0'; //don't include the newline in the line buffer
-
-                    //Handle the input
-                    input_line_handler(linebuf);
-
-                    lineind = 0;
-            }
-            //handle backspace behaviour - print back backspace, then a space to clear the character, then another backspace
-            //for the lineBuffer, we just move the index back one character
-            //NOTE: backspace doesn't work in Mbed Studio serial output. Use something like MobaXterm or Putty
-            else if(serialbuf[i] == '\b')
-            {
-                //don't back up if we are at the start of the line
-                if(lineind != 0)
-                {
-                    bf_print(&bf, "\b \b");
-                    linebuf[lineind--] = '\0'; //set the most recent char back to \0 and move the line buffer back a character
-                }
-            }
-            // All text chars, print back and record in buffer
-            // Space (0x20) is start of printable range, ~ (0x7E) is end
-            else if (serialbuf[i] >= ' ' && serialbuf[i] <= '~')
-            {
-                bf.write(&(serialbuf[i]), 1);
-                linebuf[lineind++] = serialbuf[i];
-            }
-            //all others chars, ignore for now
-            else {
-                //do nothing
-            }
-        }
-
-        ThisThread::sleep_for(10ms);
-    }
-}
 
 //Output the tach reading at a specific frequency
+//This thread could be replaced by a Ticker function that sends the printf call to an event queue. 
+//      - Equivalent except for one less task stack of memory use, if the event queue already exists
 void output_loop()
 {
-    bf_printf(&bf, "Starting output loop\n");
     while(true)
     {
-        //TODO Proper RTOS way of getting the current tach RPM from the tach loop
-        bf_printf(&bf, "Tach reading (RPM): %d\n", fan_tach.getRPM());
+        ys.printf("Tach reading (RPM): %d\n", fan_tach.getRPM());
         ThisThread::sleep_for(config.output_update_ms);
     }
 
+}
+
+void command_duty(int argv, char** argvv)
+{
+
+}
+
+void command_frequency()
+{
+
+}
+
+void command_output()
+{
+    
 }
 
 int main()
@@ -252,22 +107,17 @@ int main()
     DigitalOut led(LED1);
     led = 1;
 
+    ys.print("\nStarting threads\n");
+    //ys.register_command("duty", &command_duty);
 
-    //tach_in.rise(&tach_isr);
-
-    bf.set_blocking(true);
-
-    bf_print(&bf, "\nStarting threads\n");
-
-    input_thread.start(input_loop);
-    pwm_thread.start(pwm_loop);
-    //tach_thread.start(tach_loop);
-    // tach_in.mode(PullDown);
-    // tach_ticker.attach(&tach_rpm_tick, config.tach_update_ms);
     output_thread.start(output_loop);
+
+    ThisThread::sleep_for(1s); //small delay for tach to get first RPM reading
+    //output_ticker.attach(&output_tick, config.output_update_ms);
 
     while (true) {
         ThisThread::sleep_for(10s);
+        led = !led;
     }
 }
 
