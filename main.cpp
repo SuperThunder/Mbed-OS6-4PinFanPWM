@@ -67,8 +67,6 @@ struct {
 //         status = sscanf(value1, "%d", &tmp_d);
 //         //set output frequency
 //         config.output_update_ms = chrono::milliseconds(tmp_d);
-//         //output_ticker.detach();
-//         //output_ticker.attach(&output_ti)
 //     }
 //     //todo unknown command bit here
 // }
@@ -86,19 +84,57 @@ void output_loop()
 
 }
 
-void command_duty(int argv, char** argvv)
+void command_duty(int argc, char** argv)
 {
-
+    //just command name
+    if(argc == 1)
+    {
+        ys.printf("PWM duty: %f\n", config.pwm_duty);
+    }
+    //if value provided too
+    else if(argc == 2)
+    {
+        float tmp_f;
+        int status = sscanf(argv[1], "%f", &tmp_f);
+        //set duty
+        config.pwm_duty = tmp_f;
+        fan_pwm.write(tmp_f);
+    }
 }
 
-void command_frequency()
+void command_frequency(int argc, char** argv)
 {
-
+    //just command name
+    if(argc == 1)
+    {
+        ys.printf("PWM frequency: %f\n", config.pwm_frequency);
+    }
+    //if value provided too
+    else if(argc == 2)
+    {
+        float tmp_f;
+        int status = sscanf(argv[1], "%f", &tmp_f);
+        //set duty
+        config.pwm_frequency = tmp_f;
+        fan_pwm.period(1.0 / tmp_f);
+    }
 }
 
-void command_output()
+void command_output(int argc, char** argv)
 {
-    
+    //just command name
+    if(argc == 1)
+    {
+        ys.printf("Output frequency (ms): %d\n", config.output_update_ms);
+    }
+    //if value provided too
+    else if(argc == 2)
+    {
+        int tmp_d;
+        int status = sscanf(argv[1], "%d", &tmp_d);
+        //set duty
+        config.output_update_ms = chrono::milliseconds(tmp_d*1000);
+    }
 }
 
 int main()
@@ -107,8 +143,13 @@ int main()
     DigitalOut led(LED1);
     led = 1;
 
+    fan_pwm.write(config.pwm_duty);
+    fan_pwm.period(1.0/config.pwm_frequency);
+
     ys.print("\nStarting threads\n");
-    //ys.register_command("duty", &command_duty);
+    ys.register_command("duty", &command_duty);
+    ys.register_command("freq", &command_frequency);
+    ys.register_command("output", &command_output);
 
     output_thread.start(output_loop);
 

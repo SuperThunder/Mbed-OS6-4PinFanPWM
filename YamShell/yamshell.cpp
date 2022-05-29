@@ -50,6 +50,22 @@ void YamShell::printf(const char fmt[], ...)
     }
 }
 
+//TODO register command callback
+void YamShell::register_command(std::string command_name, _CommandCallback command_function)
+{
+    //check current number of callbacks
+    if(_command_callback_count >= _commands.size())
+    {
+        this->println("E: Max number of registered commands already reached!");
+        return;
+    }
+
+    _CallbackTuple com_tuple = std::make_tuple(std::string(command_name), command_function);
+    _commands[_command_callback_count++] = com_tuple;
+    this->printf("Registering command: %s\n", command_name.c_str());
+}
+
+
 void YamShell::_input_line_handler(const char* il)
 {
     //int status, addr = -1; //temporary vars used when parsing the command
@@ -74,9 +90,7 @@ void YamShell::_input_line_handler(const char* il)
     char* token;
     char* save_pos;
 
-    this->printf("Got line: %s\n", il);
-    
-    //TODO copy line to new buffer, tokenize, get command, check if we have command, if we do form argc and argv and call handler
+    //this->printf("Got line: %s\n", il);
     
     //Copy the command line
     memcpy(token_buffer, il, LINE_BUFFER_SIZE);
@@ -84,40 +98,47 @@ void YamShell::_input_line_handler(const char* il)
     //tokenize
     //First use: scan the token buffer, save our position with the save_pos pointer
     token = strtok_r(token_buffer, sep, &save_pos);
+    argv[argc++] = token;
     while(token != NULL)
     {
+        //this->printf("--Tok %d: %s--\n", argc-1, token);
+        //After first use: return to our saved position
+        token = strtok_r(save_pos, sep, &save_pos);
+        argv[argc++] = token;
 
-        argv[argc] = token;
-        this->printf("--Tok %d: %s--\n", argc, token);
-        argc++;
         if(argc > MAX_COMMAND_COUNT)
         {
             this->println("E: Max number of commands exceeded!");
             return;
         }
-        //After first use: return to our saved position
-        token = strtok_r(save_pos, sep, &save_pos);
     }
+    argc--; //argc value increment overshoots by 1, so decrement after getting all tokens
 
-    for(int i = 0; i < argc; i++)
-    {
-        this->printf("--Tok %d: %s--\n", i, argv[i]);
-    }
+    // for(int i = 0; i < argc; i++)
+    // {
+    //     this->printf("--Tok %d: %s--\n", i, argv[i]);
+    // }
     
     //get command name
-    //this->printf("--Command: %s", *argv[0]);
+    this->printf("--Command: %s--\n", argv[0]);
+    std::string input_command(argv[0]);
 
+    //TODO
     //check if it is registered
+    //Using lambda with std::find_if: https://stackoverflow.com/questions/42933943/how-to-use-lambda-for-stdfind-if
+    _CallbackTuple* ct_search = std::find_if(_commands.begin(), _commands.end(), [&input_command](const _CallbackTuple& ct){return std::get<0>(ct) == input_command;});
+    if(ct_search != _commands.end())
+    {
+        //call if it is
+        _CommandCallback cc = std::get<1>(*ct_search);
+        cc.call(argc, argv);
+    }
+    else
+    {
+        this->printf("E: Unknown command:  %s\n", argv[0]);
+    }
 
-    //call if it is
 
-//     if(scan_count == 1)
-//     {
-        
-//     else
-//     {
-//         this->print("E: Invalid input\n");
-//     }
 }
 
 //Check for input until newline, then process it

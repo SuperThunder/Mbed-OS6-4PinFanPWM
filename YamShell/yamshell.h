@@ -30,12 +30,14 @@ constexpr uint32_t ARG_MAX = 8; //max number of arguments allowed
 class YamShell
 {
 public:
+    typedef Callback<void(int argc, char** argv)> _CommandCallback;
+
     YamShell(PinName serialTX, PinName serialRX, uint32_t baud);
     void print(const char* s);
     void println(const char* s);
     void printf(const char fmt[], ...);
 
-    void register_command(std::string command_name, Callback<void(int argc, char** argv)> command_function);
+    void register_command(std::string command_name, _CommandCallback command_function);
 
     void serial_setbaud(int baud){_bf.set_baud(baud);};
     BufferedSerial* getBufferedSerial(){return &_bf;};
@@ -46,13 +48,15 @@ private:
 
     //Array of callbacks to call for a given command string
     //TODO dynamic registration isn't great. There is probably some way to use C++ features so that callback handlers can all be registered at compile time.
+    //          The std::string for command name could probably easily be char*, is anything gained by being a string?
     //          The C way would probably be a preprocessor directive that would feed into a big assembled if-else block or static array to loop through
-    std::array<std::tuple<const std::string, Callback<void(int argc, char** argv)>>, MAX_COMMAND_COUNT> _commands{};
+    typedef std::tuple<std::string, _CommandCallback> _CallbackTuple;
+    std::array<_CallbackTuple, MAX_COMMAND_COUNT> _commands{};
+    uint32_t _command_callback_count = 0;
 
     void _input_loop();
     void _input_line_handler(const char* il);
 
-    
 };
 
 
