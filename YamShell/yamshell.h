@@ -16,23 +16,14 @@ constexpr uint32_t MAX_COMMAND_COUNT = 32;
 constexpr uint32_t LINE_BUFFER_SIZE = 256;
 constexpr uint32_t ARG_MAX = 8; //max number of arguments allowed
 
-//TODO:
-//Command registration with callback (to vector of string in heap maybe)
-
-//Argc/Argv generation:
-//Make a copy of the line buffer (possibly not strictly needed here, but so that there is not contention)
-//Figure out argc and argv using strtok_r or strsep
-//Call commands with argc and argv (argv points to the start of each token in the copied line buffer)
-
-//Preserves input line even while output printing
-//Provides easy access to printf, println, write(char*) functionsr
 
 class YamShell
 {
 public:
     typedef Callback<void(int argc, char** argv)> _CommandCallback;
 
-    YamShell(PinName serialTX, PinName serialRX, uint32_t baud);
+    YamShell(PinName serialTX, PinName serialRX, uint32_t baud, bool preserveLine = true);
+    void write(const void *buf, std::size_t len);
     void print(const char* s);
     void println(const char* s);
     void printf(const char fmt[], ...);
@@ -40,6 +31,7 @@ public:
     void register_command(std::string command_name, _CommandCallback command_function);
 
     void serial_setbaud(int baud){_bf.set_baud(baud);};
+    void serial_setpreserveline(bool pl){_preserve_line = pl;};
     BufferedSerial* getBufferedSerial(){return &_bf;};
 
 private:
@@ -53,6 +45,10 @@ private:
     typedef std::tuple<std::string, _CommandCallback> _CallbackTuple;
     std::array<_CallbackTuple, MAX_COMMAND_COUNT> _commands{};
     uint32_t _command_callback_count = 0;
+
+    bool _preserve_line;
+    char _linebuf[LINE_BUFFER_SIZE]{0};
+    int _lineind = 0;
 
     void _input_loop();
     void _input_line_handler(const char* il);

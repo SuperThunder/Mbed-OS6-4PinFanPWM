@@ -1,26 +1,63 @@
 #include "yamshell.h"
 
-YamShell::YamShell(PinName serialTX, PinName serialRX, uint32_t baud): _bf(serialTX, serialRX, baud)
+YamShell::YamShell(PinName serialTX, PinName serialRX, uint32_t baud, bool preserveLine): _bf(serialTX, serialRX, baud)
 {
     //Calls to BufferedSerial are blocking for now
     //TODO try to set to nonblocking (may need to set up mutex so simultaneous write operations (including input echo operations) don't conflict)
     _bf.set_blocking(true);
     _input_thread.start(callback(this, &YamShell::_input_loop));
+    _preserve_line = preserveLine;
 }
+
+//TODO preserve line functionality
+//      if the line buffer already has text, then erase the line, write the new content, go to a newline, and write the previous content
+//      this way the active content will be preserved at the bottom
+//intermediate layer to BufferedSerial.write to implement extra features
+void YamShell::write(const void *buf, std::size_t len)
+{
+    //TODO may need mutex to coordinate with input thread char echo code
+    //erase the current input, put the output, then put the input back at the bottom
+    if(_preserve_line && _lineind > 0)
+    {
+        //erase current input
+        for(int i = 0; i < _lineind; i++)
+        {
+            //TODO probably inefficient to erase one character at a time
+            _bf.write(&("\b \b"), 3);
+        }
+
+        //put new output
+        _bf.write(buf, len);
+
+        //down a line
+        _bf.write(&("\n"), 1);
+
+        //put old input back
+        _bf.write(_linebuf, _lineind);
+    }
+    else 
+    {
+        _bf.write(buf, len);
+    }
+}
+
 
 void YamShell::print(const char s[])
 {
     int len = strlen(s);
-    _bf.write(s, len);
+    this->write(s, len);
 }
 
 void YamShell::println(const char s[])
 {
-    int len = strlen(s);
-    _bf.write(s, len);
-    _bf.write(&("\n"), 1);
+    // int len = strlen(s);
+    // _bf.write(s, len);
+    // _bf.write(&("\n"), 1);
+    this->print(s);
+    this->print("\n");
 }
 
+//TODO implement preserve line functionality here too
 //variadic function so printf can be used with buffered serial (alternatively, you can get the FILE* handle for the BufferedSerial with fdopen and use fprintf)
 void YamShell::printf(const char fmt[], ...)
 {
@@ -38,7 +75,7 @@ void YamShell::printf(const char fmt[], ...)
     
     if(vsn_retval > 0 && vsn_retval < MBED_CONF_DRIVERS_UART_SERIAL_RXBUF_SIZE)
     {
-        _bf.write(buffer, vsn_retval);
+        this->write(buffer, vsn_retval);
     }
     else if(vsn_retval >= MBED_CONF_DRIVERS_UART_SERIAL_RXBUF_SIZE)
     {
@@ -50,7 +87,6 @@ void YamShell::printf(const char fmt[], ...)
     }
 }
 
-//TODO register command callback
 void YamShell::register_command(std::string command_name, _CommandCallback command_function)
 {
     //check current number of callbacks
@@ -91,6 +127,12 @@ void YamShell::_input_line_handler(const char* il)
     char* save_pos;
 
     //this->printf("Got line: %s\n", il);
+
+    //do nothing if nothing in line
+    if(il[0] == '\0')
+    {
+        return;
+    }
     
     //Copy the command line
     memcpy(token_buffer, il, LINE_BUFFER_SIZE);
@@ -123,7 +165,6 @@ void YamShell::_input_line_handler(const char* il)
     this->printf("--Command: %s--\n", argv[0]);
     std::string input_command(argv[0]);
 
-    //TODO
     //check if it is registered
     //Using lambda with std::find_if: https://stackoverflow.com/questions/42933943/how-to-use-lambda-for-stdfind-if
     _CallbackTuple* ct_search = std::find_if(_commands.begin(), _commands.end(), [&input_command](const _CallbackTuple& ct){return std::get<0>(ct) == input_command;});
@@ -145,10 +186,10 @@ void YamShell::_input_line_handler(const char* il)
 void YamShell::_input_loop()
 {
     char serialbuf[LINE_BUFFER_SIZE]{0}; 
-    char linebuf[LINE_BUFFER_SIZE]{0};
-    int lineind = 0;
+
+
     int serialcount = 0;
-    _bf.write("Input thread\n\n", 13);
+    this->print("Input thread\n\n");
     while(true)
     {
         //TODO: Don't go over buffer size
@@ -168,12 +209,12 @@ void YamShell::_input_loop()
                         i++;
                     }
                     this->print("\n");
-                    linebuf[lineind++] = '\0'; //don't include the newline in the line buffer, use its space for the null character
+                    _linebuf[_lineind++] = '\0'; //don't include the newline in the line buffer, use its space for the null character
 
                     //Handle the input (parses the command name and calls relevant handler function)
-                    _input_line_handler(linebuf);
+                    _input_line_handler(_linebuf);
 
-                    lineind = 0;
+                    _lineind = 0;
             }
             //handle backspace behaviour - print back backspace, then a space to clear the character, then another backspace
             //for the lineBuffer, we just move the index back one character
@@ -181,18 +222,18 @@ void YamShell::_input_loop()
             else if(serialbuf[i] == '\b')
             {
                 //don't back up if we are at the start of the line
-                if(lineind != 0)
+                if(_lineind != 0)
                 {
                     this->print("\b \b");
-                    linebuf[lineind--] = '\0'; //set the most recent char back to \0 and move the line buffer back a character
+                    _linebuf[_lineind--] = '\0'; //set the most recent char back to \0 and move the line buffer back a character
                 }
             }
             // All text chars, print back and record in buffer
             // Space (0x20) is start of printable range, ~ (0x7E) is end
             else if (serialbuf[i] >= ' ' && serialbuf[i] <= '~')
             {
-                _bf.write(&(serialbuf[i]), 1);
-                linebuf[lineind++] = serialbuf[i];
+                this->write(&(serialbuf[i]), 1);
+                _linebuf[_lineind++] = serialbuf[i];
             }
             //all others chars, ignore for now
             else {
