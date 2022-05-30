@@ -5,7 +5,7 @@
             "target.features_add": [],
             "target.features_remove": [],
             "target.c_lib": "std", 
-            "target.printf_lib": "minimal", 
+            "target.printf_lib": "minimal",
             "platform.stdio-buffered-serial": 1, 
             "platform.stdio-baud-rate": 115200
         }

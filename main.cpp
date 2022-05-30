@@ -28,49 +28,6 @@ struct {
     chrono::milliseconds output_update_ms = chrono::milliseconds(2000);
 } config;
 
-//command logic to reimplement
-//     if(strcmp("duty", command) == 0)
-//     {
-//         //print duty
-//         this->printf("PWM Duty: %f\n", config.pwm_duty);
-//     }
-//     else if(strcmp("freq", command) == 0)
-//     {
-//         //print frequency
-//         this->printf("PWM Frequency: %f\n", config.pwm_frequency);
-//     }
-//     else if(strcmp("output", command) == 0)
-//     {
-//         //print output frequency
-//         this->printf("Output frequency (ms): %d\n", config.output_update_ms);
-//     }
-//     //todo unknown command bit here
-// }
-// else if(scan_count == 2)
-// {
-//     if(strcmp("duty", command) == 0)
-//     {
-//         status = sscanf(value1, "%f", &tmp_f);
-//         //set duty
-//         config.pwm_frequency = tmp_f;
-//         fan_pwm.write(tmp_f);
-//     }
-//     else if(strcmp("freq", command) == 0)
-//     {
-//         status = sscanf(value1, "%f", &tmp_f);
-//         //set frequency
-//         config.pwm_duty = tmp_f;
-//         fan_pwm.period(1/tmp_f);
-//     }
-//     else if(strcmp("output", command) == 0)
-//     {
-//         status = sscanf(value1, "%d", &tmp_d);
-//         //set output frequency
-//         config.output_update_ms = chrono::milliseconds(tmp_d);
-//     }
-//     //todo unknown command bit here
-// }
-
 //Output the tach reading at a specific frequency
 //This thread could be replaced by a Ticker function that sends the printf call to an event queue. 
 //      - Equivalent except for one less task stack of memory use, if the event queue already exists
@@ -147,9 +104,9 @@ int main()
     fan_pwm.period(1.0/config.pwm_frequency);
 
     ys.print("\nStarting threads\n");
-    ys.register_command("duty", &command_duty);
-    ys.register_command("freq", &command_frequency);
-    ys.register_command("output", &command_output);
+    ys.registerCommand("duty", &command_duty);
+    ys.registerCommand("freq", &command_frequency);
+    ys.registerCommand("output", &command_output);
 
     output_thread.start(output_loop);
 
@@ -157,7 +114,7 @@ int main()
     //output_ticker.attach(&output_tick, config.output_update_ms);
 
     while (true) {
-        ThisThread::sleep_for(10s);
+        ThisThread::sleep_for(3s);
         led = !led;
     }
 }

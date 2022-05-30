@@ -16,7 +16,8 @@ constexpr uint32_t MAX_COMMAND_COUNT = 32;
 constexpr uint32_t LINE_BUFFER_SIZE = 256;
 constexpr uint32_t ARG_MAX = 8; //max number of arguments allowed
 
-
+//TODO provide option to override Mbed default console (so all printf / scanf will route through this class)
+//TODO event queue to allow for ISRs to fire off printfs, also test routing all write / print / printf through the eventqueue
 class YamShell
 {
 public:
@@ -28,15 +29,18 @@ public:
     void println(const char* s);
     void printf(const char fmt[], ...);
 
-    void register_command(std::string command_name, _CommandCallback command_function);
+    void registerCommand(std::string command_name, _CommandCallback command_function);
 
-    void serial_setbaud(int baud){_bf.set_baud(baud);};
-    void serial_setpreserveline(bool pl){_preserve_line = pl;};
+    void setBaud(int baud){_bf.set_baud(baud);};
+    void setPreserveLine(bool pl){_preserve_line = pl;};
+    bool getPreserveLine(){return _preserve_line;};
     BufferedSerial* getBufferedSerial(){return &_bf;};
 
 private:
     BufferedSerial _bf;
     Thread _input_thread;
+    //TODO may want EventQueue to put all output printing into own thread, would allow functions to print with minimal time cost in the function
+    //      - The underlying functions could be private (all printing done in the thread) or public (option of using the queue or not)
 
     //Array of callbacks to call for a given command string
     //TODO dynamic registration isn't great. There is probably some way to use C++ features so that callback handlers can all be registered at compile time.
