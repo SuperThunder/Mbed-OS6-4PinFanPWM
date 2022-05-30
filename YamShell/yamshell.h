@@ -23,10 +23,17 @@ public:
     typedef Callback<void(int argc, char** argv)> _CommandCallback;
 
     YamShell(PinName serialTX, PinName serialRX, uint32_t baud, bool preserveLine = true);
+    //Function to call that vary based on YAMSHELL_NO_EVENT_THREAD, will put print on EventQueue Thread if not disabled
     void write(const void *buf, std::size_t len);
     void print(const char* s);
     void println(const char* s);
     void printf(const char fmt[], ...);
+    //Actual underlying functions that do writes, can still be called directly
+    void bf_write(const void *buf, std::size_t len);
+    void bf_print(const char* s);
+    void bf_println(const char* s);
+    void bf_printf(const char fmt[], ...);
+
 
     void registerCommand(std::string command_name, _CommandCallback command_function);
 
@@ -38,9 +45,14 @@ public:
 private:
     BufferedSerial _bf;
     Thread _input_thread;
-    //TODO May want EventQueue to allow for ISRs to fire off printfs
-    //also put all output printing (write/print/println/printf) into the EventQeuue, might allow functions to print with less time cost in the function than direct calls
-    //      - The underlying functions could be private (all printing done in the thread) or public (option of using the queue or not)
+    //EventQueue + thread to run it in to allow for ISRs to fire off printfs
+    //put all output printing (write/print/println/printf) into the EventQueue, minimize time spent in print calls for other functions too
+    //  underlying functions (eg bf_write, bf_printf) still public
+    //TODO may want to have option 
+    #ifndef YAMSHELL_NO_EVENT_THREAD
+    Thread _event_thread;
+    EventQueue _event_queue;
+    #endif
 
     //Array of callbacks to call for a given command string
     //TODO dynamic registration isn't great. There is probably some way to use C++ features so that callback handlers can all be registered at compile time.
