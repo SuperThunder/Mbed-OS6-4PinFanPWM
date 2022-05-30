@@ -7,52 +7,13 @@ YamShell::YamShell(PinName serialTX, PinName serialRX, uint32_t baud, bool prese
     _bf.set_blocking(true);
     _input_thread.start(callback(this, &YamShell::_input_loop));
     _preserve_line = preserveLine;
-
-    #ifndef YAMSHELL_NO_EVENT_THREAD
-    _event_thread.start(callback(&_event_queue, &EventQueue::dispatch_forever));
-    #endif
 }
 
-//API functions - uses eventqueue thread or direct call depending on YAMSHELL_NO_EVENT_THREAD
-void YamShell::write(const void *buf, std::size_t len)
-{
-    #ifdef YAMSHELL_NO_EVENT_THREAD
-    bf_write(buf, len);
-    #else
-    _event_queue.call(callback(this, &YamShell::bf_write), buf, len);
-    #endif
-}
-void YamShell::print(const char* s)
-{
-    #ifdef YAMSHELL_NO_EVENT_THREAD
-    bf_print(s);
-    #else
-    _event_queue.call(callback(this, &YamShell::bf_print), s);
-    #endif
-}
-void YamShell::println(const char* s)
-{
-    #ifdef YAMSHELL_NO_EVENT_THREAD
-    bf_println(s);
-    #else
-    _event_queue.call(callback(this, &YamShell::bf_println), s);
-    #endif
-}
-// void YamShell::printf(const char fmt[], ...)
-// {
-//     va_list args;
-//     va_start(args, fmt);
-//     #ifdef YAMSHELL_NO_EVENT_THREAD
-//     bf_printf(fmt, args);
-//     #else
-//     _event_queue.call(callback(this, &YamShell::printf), fmt, args);
-//     #endif
-// }
 
 //intermediate layer to BufferedSerial.write to implement input line preserving feature
 //TODO may want some special methods newline, backspace, putc, etc to write N number of backspaces / newlines or a single character 
 //  - and optionally without trying to preserve the current line at the bottom
-void YamShell::bf_write(const void *buf, std::size_t len)
+void YamShell::write(const void *buf, std::size_t len)
 {
     //TODO may need mutex to coordinate with input thread char echo code
     //preserve line functionality:
@@ -79,13 +40,13 @@ void YamShell::bf_write(const void *buf, std::size_t len)
 }
 
 
-void YamShell::bf_print(const char s[])
+void YamShell::print(const char s[])
 {
     int len = strlen(s);
     this->write(s, len);
 }
 
-void YamShell::bf_println(const char s[])
+void YamShell::println(const char s[])
 {
     this->print(s);
     this->print("\n");
@@ -108,12 +69,7 @@ void YamShell::printf(const char fmt[], ...)
     
     if(vsn_retval > 0 && vsn_retval < MBED_CONF_DRIVERS_UART_SERIAL_RXBUF_SIZE)
     {
-        #ifdef YAMSHELL_NO_EVENT_THREAD
-            this->write(buffer, vsn_retval);
-        #else
-            _event_queue.call(callback(this, &YamShell::write), buffer, vsn_retval);
-        #endif
-        
+        this->write(buffer, vsn_retval);
     }
     else if(vsn_retval >= MBED_CONF_DRIVERS_UART_SERIAL_RXBUF_SIZE)
     {

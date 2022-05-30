@@ -12,9 +12,6 @@
 #define DEFAULT_PWM_FREQUENCY 25000.0f
 #define DEFAULT_PWM_DUTY 0.5f
 
-//define YAMSHELL_NO_EVENT_THREAD to disable of EventQueue + a thread for it to run in
-//#define YAMSHELL_NO_EVENT_THREAD
-
 Thread output_thread;
 
 Tach fan_tach(TACH_PIN);
@@ -97,8 +94,6 @@ void command_output(int argc, char** argv)
     }
 }
 
-
-
 int main()
 {
     // Initialise the digital pin LED1 as an output
@@ -113,13 +108,13 @@ int main()
     ys.registerCommand("freq", &command_frequency);
     ys.registerCommand("output", &command_output);
 
-    ThisThread::sleep_for(1s); //small delay for tach to get first RPM reading
     output_thread.start(output_loop);
 
+    ThisThread::sleep_for(1s); //small delay for tach to get first RPM reading
+    //output_ticker.attach(&output_tick, config.output_update_ms);
 
     while (true) {
         ThisThread::sleep_for(3s);
-
         led = !led;
     }
 }
