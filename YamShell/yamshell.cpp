@@ -11,7 +11,8 @@ YamShell::YamShell(PinName serialTX, PinName serialRX, uint32_t baud, bool prese
 
 
 //intermediate layer to BufferedSerial.write to implement input line preserving feature
-//TODO may need some special methods newline, backspace, putc, etc to write N number of backspaces / newlines or a single character without trying to preserve the current line at the bottom
+//TODO may want some special methods newline, backspace, putc, etc to write N number of backspaces / newlines or a single character 
+//  - and optionally without trying to preserve the current line at the bottom
 void YamShell::write(const void *buf, std::size_t len)
 {
     //TODO may need mutex to coordinate with input thread char echo code
@@ -47,9 +48,6 @@ void YamShell::print(const char s[])
 
 void YamShell::println(const char s[])
 {
-    // int len = strlen(s);
-    // _bf.write(s, len);
-    // _bf.write(&("\n"), 1);
     this->print(s);
     this->print("\n");
 }
@@ -138,6 +136,7 @@ void YamShell::_input_line_handler(const char* il)
     }
     argc--; //argc value increment overshoots by 1, so decrement after getting all tokens
 
+    //show all tokens found
     // for(int i = 0; i < argc; i++)
     // {
     //     this->printf("--Tok %d: %s--\n", i, argv[i]);
@@ -161,14 +160,12 @@ void YamShell::_input_line_handler(const char* il)
         this->printf("E: Unknown command:  %s\n", argv[0]);
     }
 
-
 }
 
 //Check for input until newline, then process it
 void YamShell::_input_loop()
 {
     char serialbuf[LINE_BUFFER_SIZE]{0}; 
-
 
     int serialcount = 0;
     this->print("Input thread\n\n");

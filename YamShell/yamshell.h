@@ -16,8 +16,7 @@ constexpr uint32_t MAX_COMMAND_COUNT = 32;
 constexpr uint32_t LINE_BUFFER_SIZE = 256;
 constexpr uint32_t ARG_MAX = 8; //max number of arguments allowed
 
-//TODO provide option to override Mbed default console (so all printf / scanf will route through this class)
-//TODO event queue to allow for ISRs to fire off printfs, also test routing all write / print / printf through the eventqueue
+
 class YamShell
 {
 public:
@@ -39,7 +38,8 @@ public:
 private:
     BufferedSerial _bf;
     Thread _input_thread;
-    //TODO may want EventQueue to put all output printing into own thread, would allow functions to print with minimal time cost in the function
+    //TODO May want EventQueue to allow for ISRs to fire off printfs
+    //also put all output printing (write/print/println/printf) into the EventQeuue, might allow functions to print with less time cost in the function than direct calls
     //      - The underlying functions could be private (all printing done in the thread) or public (option of using the queue or not)
 
     //Array of callbacks to call for a given command string
