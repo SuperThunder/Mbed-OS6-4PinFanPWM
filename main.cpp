@@ -114,8 +114,8 @@ int main()
     //output_ticker.attach(&output_tick, config.output_update_ms);
 
     while (true) {
-        ThisThread::sleep_for(3s);
+        
+        ThisThread::sleep_for(1s);
         led = !led;
     }
 }
-
