@@ -13,7 +13,7 @@
 #define DEFAULT_PWM_DUTY 0.5f
 
 //define YAMSHELL_NO_EVENT_THREAD to disable of EventQueue + a thread for it to run in
-//#define YAMSHELL_NO_EVENT_THREAD
+#define YAMSHELL_NO_EVENT_THREAD
 
 Thread output_thread;
 
@@ -109,9 +109,12 @@ int main()
     fan_pwm.period(1.0/config.pwm_frequency);
 
     ys.print("\nStarting threads\n");
+    ThisThread::sleep_for(1s);
     ys.registerCommand("duty", &command_duty);
     ys.registerCommand("freq", &command_frequency);
     ys.registerCommand("output", &command_output);
+
+    ys.getEventQueue()->call(printf, "\ntest\n");
 
     ThisThread::sleep_for(1s); //small delay for tach to get first RPM reading
     output_thread.start(output_loop);

@@ -23,16 +23,18 @@ public:
     typedef Callback<void(int argc, char** argv)> _CommandCallback;
 
     YamShell(PinName serialTX, PinName serialRX, uint32_t baud, bool preserveLine = true);
-    //Function to call that vary based on YAMSHELL_NO_EVENT_THREAD, will put print on EventQueue Thread if not disabled
+    //Function to call that vary based on YAMSHELL_NO_EVENT_THREAD, will put write call on EventQueue Thread if feature not disabled
     void write(const void *buf, std::size_t len);
     void print(const char* s);
     void println(const char* s);
-    void printf(const char fmt[], ...);
+
     //Actual underlying functions that do writes, can still be called directly
     void bf_write(const void *buf, std::size_t len);
     void bf_print(const char* s);
     void bf_println(const char* s);
-    void bf_printf(const char fmt[], ...);
+    void printf(const char fmt[], ...); //callback for variadic member function not supported by mbed
+
+    EventQueue* getEventQueue(){return &_event_queue;};
 
 
     void registerCommand(std::string command_name, _CommandCallback command_function);

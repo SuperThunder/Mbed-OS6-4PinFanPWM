@@ -38,16 +38,7 @@ void YamShell::println(const char* s)
     _event_queue.call(callback(this, &YamShell::bf_println), s);
     #endif
 }
-// void YamShell::printf(const char fmt[], ...)
-// {
-//     va_list args;
-//     va_start(args, fmt);
-//     #ifdef YAMSHELL_NO_EVENT_THREAD
-//     bf_printf(fmt, args);
-//     #else
-//     _event_queue.call(callback(this, &YamShell::printf), fmt, args);
-//     #endif
-// }
+
 
 //intermediate layer to BufferedSerial.write to implement input line preserving feature
 //TODO may want some special methods newline, backspace, putc, etc to write N number of backspaces / newlines or a single character 
@@ -82,16 +73,17 @@ void YamShell::bf_write(const void *buf, std::size_t len)
 void YamShell::bf_print(const char s[])
 {
     int len = strlen(s);
-    this->write(s, len);
+    this->bf_write(s, len);
 }
 
 void YamShell::bf_println(const char s[])
 {
-    this->print(s);
-    this->print("\n");
+    this->bf_print(s);
+    this->bf_print("\n");
 }
 
 //variadic function so printf can be used with buffered serial (alternatively, you can get the FILE* handle for the BufferedSerial with fdopen and use fprintf)
+//Does not submit write to event queue since Callback doesn't know how to deal with variadic argument functions, and the buffer of printf can get overwritten by a subsequent call if we put the write call on the queue
 void YamShell::printf(const char fmt[], ...)
 {
     //sized to RX buffer size in case entire line needs to be written
@@ -105,15 +97,11 @@ void YamShell::printf(const char fmt[], ...)
     vsn_retval = vsnprintf(buffer,MBED_CONF_DRIVERS_UART_SERIAL_RXBUF_SIZE,fmt,args);
     
     va_end(args);
-    
+
     if(vsn_retval > 0 && vsn_retval < MBED_CONF_DRIVERS_UART_SERIAL_RXBUF_SIZE)
     {
-        #ifdef YAMSHELL_NO_EVENT_THREAD
-            this->write(buffer, vsn_retval);
-        #else
-            _event_queue.call(callback(this, &YamShell::write), buffer, vsn_retval);
-        #endif
-        
+        //the buffer is the same across printf calls, so can't use printf with the event queue. normal printf would have to be called.
+        this->bf_write(buffer, vsn_retval);
     }
     else if(vsn_retval >= MBED_CONF_DRIVERS_UART_SERIAL_RXBUF_SIZE)
     {
@@ -130,7 +118,7 @@ void YamShell::registerCommand(std::string command_name, _CommandCallback comman
     //check current number of callbacks
     if(_command_callback_count >= _commands.size())
     {
-        this->println("E: Max number of registered commands already reached!");
+        this->bf_println("E: Max number of registered commands already reached!");
         return;
     }
 
